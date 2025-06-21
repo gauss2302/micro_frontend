@@ -16,8 +16,13 @@ export interface User {
 	email: string
 	name: string
 	picture?: string
+	bio?: string
+	location?: string
+	website?: string
+	is_active: boolean
+	created_at: string
+	updated_at: string
 }
-
 export interface AuthTokens {
 	access_token: string
 	refresh_token: string
@@ -33,6 +38,54 @@ export interface AuthResponse {
 export interface GoogleAuthURLResponse {
 	auth_url: string
 	state: string
+}
+
+// Post interfaces
+export interface Post {
+	id: string
+	user_id: string
+	title: string
+	content: string
+	slug: string
+	published: boolean
+	created_at: string
+	updated_at: string
+}
+
+export interface PostSummary {
+	id: string
+	user_id: string
+	title: string
+	slug: string
+	published: boolean
+	created_at: string
+	updated_at: string
+}
+
+export interface CreatePostRequest {
+	title: string
+	content: string
+	slug?: string
+	published?: boolean
+}
+
+export interface UpdatePostRequest {
+	title?: string
+	content?: string
+	slug?: string
+	published?: boolean
+}
+
+export interface ListPostsResponse {
+	posts: PostSummary[]
+	limit: number
+	offset: number
+	total: number
+}
+
+export interface PostStatsResponse {
+	total_published_posts: number
+	user_posts_count?: number
 }
 
 class APIClient {
@@ -137,7 +190,7 @@ class APIClient {
 		}
 	}
 
-	// Auth endpoints
+	// ===== AUTH ENDPOINTS =====
 	async getGoogleAuthURL(): Promise<GoogleAuthURLResponse> {
 		const response: AxiosResponse<APIResponse<GoogleAuthURLResponse>> = await this.client.get(
 			'/api/v1/auth/google'
@@ -205,7 +258,7 @@ class APIClient {
 		return response.data.data!
 	}
 
-	// User endpoints
+	// ===== USER ENDPOINTS =====
 	async getCurrentUser(): Promise<User> {
 		const token = this.getStoredToken()
 		if (!token) {
@@ -230,7 +283,169 @@ class APIClient {
 		return response.data.data!
 	}
 
-	// Token management helpers
+	async getUserProfile(userId: string): Promise<User> {
+		const response: AxiosResponse<APIResponse<User>> = await this.client.get(
+			`/api/v1/public/users/${userId}/profile`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to get user profile')
+		}
+
+		return response.data.data!
+	}
+
+	// ===== POST ENDPOINTS =====
+
+	// Create a new post
+	async createPost(postData: CreatePostRequest): Promise<Post> {
+		const response: AxiosResponse<APIResponse<Post>> = await this.client.post(
+			'/api/v1/posts',
+			postData
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to create post')
+		}
+
+		return response.data.data!
+	}
+
+	// Get a specific post by ID
+	async getPost(postId: string): Promise<Post> {
+		const response: AxiosResponse<APIResponse<Post>> = await this.client.get(
+			`/api/v1/posts/${postId}`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to get post')
+		}
+
+		return response.data.data!
+	}
+
+	// Get a post by slug (public)
+	async getPostBySlug(slug: string): Promise<Post> {
+		const response: AxiosResponse<APIResponse<Post>> = await this.client.get(
+			`/api/v1/public/posts/slug/${slug}`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to get post')
+		}
+
+		return response.data.data!
+	}
+
+	// Update a post
+	async updatePost(postId: string, postData: UpdatePostRequest): Promise<Post> {
+		const response: AxiosResponse<APIResponse<Post>> = await this.client.put(
+			`/api/v1/posts/${postId}`,
+			postData
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to update post')
+		}
+
+		return response.data.data!
+	}
+
+	// Delete a post
+	async deletePost(postId: string): Promise<void> {
+		const response: AxiosResponse<APIResponse<void>> = await this.client.delete(
+			`/api/v1/posts/${postId}`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to delete post')
+		}
+	}
+
+	// List posts (public)
+	async listPosts(params: {
+		limit?: number
+		offset?: number
+		published_only?: boolean
+	} = {}): Promise<ListPostsResponse> {
+		const searchParams = new URLSearchParams()
+		if (params.limit) searchParams.append('limit', params.limit.toString())
+		if (params.offset) searchParams.append('offset', params.offset.toString())
+		if (params.published_only !== undefined) {
+			searchParams.append('published_only', params.published_only.toString())
+		}
+
+		const response: AxiosResponse<APIResponse<ListPostsResponse>> = await this.client.get(
+			`/api/v1/public/posts?${searchParams.toString()}`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to list posts')
+		}
+
+		return response.data.data!
+	}
+
+	// Get user's posts
+	async getUserPosts(userId: string, params: {
+		limit?: number
+		offset?: number
+	} = {}): Promise<ListPostsResponse> {
+		const searchParams = new URLSearchParams()
+		if (params.limit) searchParams.append('limit', params.limit.toString())
+		if (params.offset) searchParams.append('offset', params.offset.toString())
+
+		const response: AxiosResponse<APIResponse<ListPostsResponse>> = await this.client.get(
+			`/api/v1/public/posts/user/${userId}?${searchParams.toString()}`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to get user posts')
+		}
+
+		return response.data.data!
+	}
+
+	// Search posts
+	async searchPosts(params: {
+		q: string
+		limit?: number
+		offset?: number
+		published_only?: boolean
+	}): Promise<ListPostsResponse> {
+		const searchParams = new URLSearchParams()
+		searchParams.append('q', params.q)
+		if (params.limit) searchParams.append('limit', params.limit.toString())
+		if (params.offset) searchParams.append('offset', params.offset.toString())
+		if (params.published_only !== undefined) {
+			searchParams.append('published_only', params.published_only.toString())
+		}
+
+		const response: AxiosResponse<APIResponse<ListPostsResponse>> = await this.client.get(
+			`/api/v1/public/posts/search?${searchParams.toString()}`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to search posts')
+		}
+
+		return response.data.data!
+	}
+
+	// Get post statistics
+	async getPostStats(): Promise<PostStatsResponse> {
+		const response: AxiosResponse<APIResponse<PostStatsResponse>> = await this.client.get(
+			'/api/v1/public/posts/stats'
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to get post stats')
+		}
+
+		return response.data.data!
+	}
+
+	// ===== TOKEN MANAGEMENT HELPERS =====
 	storeTokens(tokens: AuthTokens): void {
 		if (typeof window !== 'undefined') {
 			localStorage.setItem('access_token', tokens.access_token)
