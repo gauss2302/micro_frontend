@@ -16,6 +16,7 @@ interface AuthState {
 	refreshAuth: () => Promise<void>
 	clearError: () => void
 	checkAuth: () => Promise<void>
+	updateUser: (user: User) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -100,13 +101,18 @@ export const useAuthStore = create<AuthState>()(
 					apiClient.storeTokens(authResponse.tokens)
 					apiClient.storeUser(authResponse.user)
 
+					// Update the store state with the refreshed user data
 					set({
 						user: authResponse.user,
 						isAuthenticated: true,
 						error: null
 					})
+
+					console.log('Token refreshed successfully, user:', authResponse.user.name)
 				} catch (error) {
 					console.warn('Token refresh failed:', error)
+
+					// Clear all auth data on refresh failure
 					set({ user: null, isAuthenticated: false })
 
 					// Clear stored tokens
@@ -132,22 +138,38 @@ export const useAuthStore = create<AuthState>()(
 					return
 				}
 
+				// First set the stored user data immediately to avoid UI flash
+				set({
+					user: storedUser,
+					isAuthenticated: true,
+					error: null
+				})
+
 				try {
 					// Validate the current token
 					const validation = await apiClient.validateToken()
 
 					if (validation.valid) {
-						set({
-							user: storedUser,
-							isAuthenticated: true,
-							error: null
-						})
+						// Token is valid, ensure we have the latest user data
+						try {
+							const currentUser = await apiClient.getCurrentUser()
+							// Update with fresh user data
+							apiClient.storeUser(currentUser)
+							set({
+								user: currentUser,
+								isAuthenticated: true,
+								error: null
+							})
+						} catch (userError) {
+							console.warn('Failed to fetch current user, using stored data:', userError)
+							// Keep using stored user data if fetching fresh data fails
+						}
 					} else {
 						// Token is invalid, try to refresh
 						await get().refreshAuth()
 					}
 				} catch (error) {
-					console.warn('Auth check failed:', error)
+					console.warn('Auth check failed, attempting refresh:', error)
 					// Try to refresh auth
 					try {
 						await get().refreshAuth()
@@ -156,6 +178,12 @@ export const useAuthStore = create<AuthState>()(
 						set({ user: null, isAuthenticated: false })
 					}
 				}
+			},
+
+			updateUser: (user: User) => {
+				// Helper function to update user data
+				apiClient.storeUser(user)
+				set({ user })
 			},
 
 			clearError: () => {

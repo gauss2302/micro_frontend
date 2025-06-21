@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, User, Edit, ArrowLeft, Share } from 'lucide-react'
+import { Calendar, User, Edit, ArrowLeft, Share, Eye } from 'lucide-react'
 import { usePostStore } from '@/store/postStore'
 import { useAuthStore } from '@/store/authStore'
 import { apiClient } from '@/lib/api'
@@ -15,12 +15,20 @@ export default function PostDetailPage() {
 	const { currentPost, isLoading, error, fetchPostBySlug, clearCurrentPost } = usePostStore()
 	const { user } = useAuthStore()
 	const [authorName, setAuthorName] = useState<string>('')
+	const [isLoadingAuthor, setIsLoadingAuthor] = useState(false)
 
 	const slug = params.slug as string
 	const isAuthor = currentPost?.user_id === user?.id
 
+	// Debug logging
+	useEffect(() => {
+		console.log('PostDetailPage mounted with slug:', slug)
+		console.log('Current URL:', window.location.href)
+	}, [slug])
+
 	useEffect(() => {
 		if (slug) {
+			console.log('Fetching post by slug:', slug)
 			fetchPostBySlug(slug)
 		}
 
@@ -32,9 +40,19 @@ export default function PostDetailPage() {
 	// Fetch author name
 	useEffect(() => {
 		if (currentPost?.user_id) {
+			setIsLoadingAuthor(true)
 			apiClient.getUserProfile(currentPost.user_id)
-				.then(profile => setAuthorName(profile.name))
-				.catch(() => setAuthorName('Unknown Author'))
+				.then(profile => {
+					setAuthorName(profile.name)
+					console.log('Author loaded:', profile.name)
+				})
+				.catch((error) => {
+					console.error('Failed to fetch author:', error)
+					setAuthorName('Unknown Author')
+				})
+				.finally(() => {
+					setIsLoadingAuthor(false)
+				})
 		}
 	}, [currentPost?.user_id])
 
@@ -60,8 +78,12 @@ export default function PostDetailPage() {
 			}
 		} else {
 			// Fallback to clipboard
-			await navigator.clipboard.writeText(window.location.href)
-			alert('Link copied to clipboard!')
+			try {
+				await navigator.clipboard.writeText(window.location.href)
+				alert('Link copied to clipboard!')
+			} catch (error) {
+				console.error('Failed to copy to clipboard:', error)
+			}
 		}
 	}
 
@@ -70,11 +92,26 @@ export default function PostDetailPage() {
 		return content
 			.split('\n\n')
 			.map((paragraph, index) => (
-				<p key={index} className="mb-4 leading-relaxed">
-					{paragraph}
+				<p key={index} className="mb-6 leading-relaxed text-gray-800">
+					{paragraph.split('\n').map((line, lineIndex) => (
+						<React.Fragment key={lineIndex}>
+							{line}
+							{lineIndex < paragraph.split('\n').length - 1 && <br />}
+						</React.Fragment>
+					))}
 				</p>
 			))
 	}
+
+	// Debug current state
+	console.log('PostDetailPage state:', {
+		slug,
+		isLoading,
+		error,
+		hasPost: !!currentPost,
+		postTitle: currentPost?.title,
+		isAuthor
+	})
 
 	if (isLoading) {
 		return (
@@ -103,9 +140,41 @@ export default function PostDetailPage() {
 					<p className="text-gray-600 mb-6">
 						{error || 'The post you\'re looking for doesn\'t exist or has been removed.'}
 					</p>
+					<div className="space-y-3">
+						<Link
+							href="/"
+							className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+						>
+							<ArrowLeft className="w-4 h-4 mr-2" />
+							Back to Home
+						</Link>
+						<div>
+							<Link
+								href="/explore"
+								className="text-indigo-600 hover:text-indigo-700 text-sm"
+							>
+								Explore other posts →
+							</Link>
+						</div>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
+	// Check if user can view this post
+	if (!currentPost.published && !isAuthor) {
+		return (
+			<div className="min-h-screen bg-gray-50 flex items-center justify-center">
+				<div className="max-w-md mx-auto text-center">
+					<Eye className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+					<h1 className="text-2xl font-bold text-gray-900 mb-4">Post Not Available</h1>
+					<p className="text-gray-600 mb-6">
+						This post is not published yet or is no longer available.
+					</p>
 					<Link
 						href="/"
-						className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+						className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
 					>
 						<ArrowLeft className="w-4 h-4 mr-2" />
 						Back to Home
@@ -117,11 +186,16 @@ export default function PostDetailPage() {
 
 	return (
 		<div className="min-h-screen bg-gray-50">
+			{/* Debug info (remove in production) */}
+			<div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 text-sm">
+				<strong>Debug:</strong> Viewing post "{currentPost.title}" (slug: {slug})
+			</div>
+
 			<div className="max-w-4xl mx-auto px-4 py-8">
 				{/* Back Button */}
 				<button
 					onClick={() => router.back()}
-					className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-8"
+					className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-8 transition-colors"
 				>
 					<ArrowLeft className="w-4 h-4 mr-2" />
 					Back
@@ -137,7 +211,9 @@ export default function PostDetailPage() {
 						<div className="flex items-center space-x-6 text-gray-600">
 							<div className="flex items-center">
 								<User className="w-4 h-4 mr-2" />
-								<span>{authorName || 'Loading...'}</span>
+								<span>
+									{isLoadingAuthor ? 'Loading...' : authorName}
+								</span>
 							</div>
 							<div className="flex items-center">
 								<Calendar className="w-4 h-4 mr-2" />
@@ -181,17 +257,17 @@ export default function PostDetailPage() {
 				</header>
 
 				{/* Article Content */}
-				<article className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+				<article className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 mb-8">
 					<div className="prose prose-lg max-w-none">
-						<div className="text-gray-800 text-lg leading-relaxed">
+						<div className="text-lg leading-relaxed">
 							{formatContent(currentPost.content)}
 						</div>
 					</div>
 				</article>
 
 				{/* Author Card */}
-				{authorName && (
-					<div className="mt-12 bg-white rounded-lg border border-gray-200 p-6">
+				{authorName && !isLoadingAuthor && (
+					<div className="bg-white rounded-lg border border-gray-200 p-6 mb-8">
 						<h3 className="text-lg font-semibold text-gray-900 mb-4">About the Author</h3>
 						<div className="flex items-center space-x-4">
 							<div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
@@ -199,18 +275,32 @@ export default function PostDetailPage() {
 							</div>
 							<div>
 								<h4 className="font-medium text-gray-900">{authorName}</h4>
-								<Link
-									href={`/user/${currentPost.user_id}`}
-									className="text-indigo-600 hover:text-indigo-700 text-sm"
-								>
-									View all posts →
-								</Link>
+								<p className="text-sm text-gray-600">
+									Writer and storyteller
+								</p>
 							</div>
 						</div>
 					</div>
 				)}
 
-				{/* Related Posts could go here */}
+				{/* Navigation */}
+				<div className="flex justify-between items-center">
+					<Link
+						href="/explore"
+						className="inline-flex items-center text-indigo-600 hover:text-indigo-700 transition-colors"
+					>
+						← Explore more stories
+					</Link>
+
+					{isAuthor && (
+						<Link
+							href="/dashboard"
+							className="inline-flex items-center text-indigo-600 hover:text-indigo-700 transition-colors"
+						>
+							Go to Dashboard →
+						</Link>
+					)}
+				</div>
 			</div>
 		</div>
 	)

@@ -8,8 +8,8 @@ import { useAuthStore } from '@/store/authStore'
 import { PostSummary } from '@/lib/api'
 
 interface PostListProps {
-	userId?: string // If provided, shows only posts from this user
-	showActions?: boolean // Show edit/delete actions for own posts
+	userId?: string
+	showActions?: boolean
 	published_only?: boolean
 	searchQuery?: string
 }

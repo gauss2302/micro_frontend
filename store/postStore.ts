@@ -29,6 +29,7 @@ interface PostState {
 	fetchPosts: (params?: { limit?: number; offset?: number; published_only?: boolean }) => Promise<void>
 	fetchPost: (postId: string) => Promise<void>
 	fetchPostBySlug: (slug: string) => Promise<void>
+	fetchPostBySlugForEdit: (slug: string) => Promise<void>
 	fetchUserPosts: (userId: string, params?: { limit?: number; offset?: number }) => Promise<void>
 	searchPosts: (query: string, params?: { limit?: number; offset?: number; published_only?: boolean }) => Promise<void>
 	fetchStats: () => Promise<void>
@@ -176,6 +177,23 @@ export const usePostStore = create<PostState>((set, get) => ({
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Failed to fetch post'
 			set({ error: errorMessage, isLoading: false })
+		}
+	},
+
+	// New method for fetching posts for editing (authenticated endpoint)
+	fetchPostBySlugForEdit: async (slug: string) => {
+		set({ isLoading: true, error: null })
+
+		try {
+			console.log('Fetching post for editing:', slug)
+			const post = await apiClient.getOwnPostBySlug(slug)
+			console.log('Post fetched for editing:', post.title, 'Published:', post.published)
+			set({ currentPost: post, isLoading: false })
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Failed to fetch post for editing'
+			console.error('Error fetching post for editing:', errorMessage)
+			set({ error: errorMessage, isLoading: false })
+			throw error
 		}
 	},
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Save, Eye, EyeOff, X, AlertCircle } from 'lucide-react'
+import { Save, Eye, EyeOff, X, AlertCircle, ArrowLeft } from 'lucide-react'
 import { usePostStore } from '@/store/postStore'
 import { useAuthStore } from '@/store/authStore'
 import { Post } from '@/lib/api'
@@ -14,15 +14,36 @@ interface PostEditorProps {
 }
 
 export default function PostEditor({ existingPost, onSave, onCancel }: PostEditorProps) {
-	const [title, setTitle] = useState(existingPost?.title || '')
-	const [content, setContent] = useState(existingPost?.content || '')
-	const [slug, setSlug] = useState(existingPost?.slug || '')
-	const [published, setPublished] = useState(existingPost?.published || false)
+	const [title, setTitle] = useState('')
+	const [content, setContent] = useState('')
+	const [slug, setSlug] = useState('')
+	const [published, setPublished] = useState(false)
 	const [isDirty, setIsDirty] = useState(false)
+	const [hasInitialized, setHasInitialized] = useState(false)
 
 	const { createPost, updatePost, isLoading, error, clearError } = usePostStore()
 	const { user } = useAuthStore()
 	const router = useRouter()
+
+	const isEditMode = !!existingPost
+
+	// Initialize form with existing post data
+	useEffect(() => {
+		if (existingPost && !hasInitialized) {
+			setTitle(existingPost.title || '')
+			setContent(existingPost.content || '')
+			setSlug(existingPost.slug || '')
+			setPublished(existingPost.published || false)
+			setHasInitialized(true)
+		} else if (!existingPost && !hasInitialized) {
+			// Initialize empty form for new post
+			setTitle('')
+			setContent('')
+			setSlug('')
+			setPublished(false)
+			setHasInitialized(true)
+		}
+	}, [existingPost, hasInitialized])
 
 	// Generate slug from title
 	const generateSlug = (title: string) => {
@@ -35,27 +56,29 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 			.substring(0, 100)
 	}
 
-	// Auto-generate slug when title changes
+	// Auto-generate slug when title changes (only for new posts)
 	useEffect(() => {
-		if (title && !existingPost) {
+		if (title && !isEditMode && hasInitialized) {
 			const newSlug = generateSlug(title)
 			setSlug(newSlug)
 		}
-	}, [title, existingPost])
+	}, [title, isEditMode, hasInitialized])
 
 	// Track if form is dirty
 	useEffect(() => {
+		if (!hasInitialized) return
+
 		if (existingPost) {
 			const hasChanges =
-				title !== existingPost.title ||
-				content !== existingPost.content ||
-				slug !== existingPost.slug ||
-				published !== existingPost.published
+				title !== (existingPost.title || '') ||
+				content !== (existingPost.content || '') ||
+				slug !== (existingPost.slug || '') ||
+				published !== (existingPost.published || false)
 			setIsDirty(hasChanges)
 		} else {
 			setIsDirty(title.trim() !== '' || content.trim() !== '')
 		}
-	}, [title, content, slug, published, existingPost])
+	}, [title, content, slug, published, existingPost, hasInitialized])
 
 	// Clear error when component mounts
 	useEffect(() => {
@@ -64,12 +87,23 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 
 	const handleSubmit = async (e: React.FormEvent, shouldPublish?: boolean) => {
 		e.preventDefault()
-		if (!user) return
+		if (!user) {
+			console.error('User not authenticated')
+			return
+		}
+
+		const trimmedTitle = title.trim()
+		const trimmedContent = content.trim()
+		const trimmedSlug = slug.trim()
+
+		if (!trimmedTitle || !trimmedContent) {
+			return
+		}
 
 		const postData = {
-			title: title.trim(),
-			content: content.trim(),
-			slug: slug.trim() || generateSlug(title),
+			title: trimmedTitle,
+			content: trimmedContent,
+			slug: trimmedSlug || generateSlug(trimmedTitle),
 			published: shouldPublish ?? published
 		}
 
@@ -103,8 +137,10 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 	const handleCancel = () => {
 		if (onCancel) {
 			onCancel()
+		} else if (existingPost) {
+			router.push(`/post/${existingPost.slug}`)
 		} else {
-			router.back()
+			router.push('/dashboard')
 		}
 	}
 
@@ -116,16 +152,40 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 		setSlug(newSlug)
 	}
 
+	// Don't render until initialized
+	if (!hasInitialized) {
+		return (
+			<div className="max-w-4xl mx-auto">
+				<div className="animate-pulse">
+					<div className="h-8 bg-gray-200 rounded mb-6 w-1/3"></div>
+					<div className="space-y-6">
+						<div className="h-12 bg-gray-200 rounded"></div>
+						<div className="h-8 bg-gray-200 rounded"></div>
+						<div className="h-64 bg-gray-200 rounded"></div>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
 	return (
 		<div className="max-w-4xl mx-auto">
 			{/* Header */}
 			<div className="flex items-center justify-between mb-6">
-				<h1 className="text-2xl font-bold text-gray-900">
-					{existingPost ? 'Edit Post' : 'Write a New Post'}
-				</h1>
+				<div>
+					<h1 className="text-2xl font-bold text-gray-900">
+						{isEditMode ? 'Edit Post' : 'Write a New Post'}
+					</h1>
+					{isEditMode && (
+						<p className="text-sm text-gray-600 mt-1">
+							Last updated: {existingPost ? new Date(existingPost.updated_at).toLocaleDateString() : 'Unknown'}
+						</p>
+					)}
+				</div>
 				<button
 					onClick={handleCancel}
 					className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+					title="Cancel editing"
 				>
 					<X className="w-5 h-5" />
 				</button>
@@ -135,7 +195,7 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 			{error && (
 				<div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3">
 					<AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-					<div>
+					<div className="flex-1">
 						<h3 className="text-sm font-medium text-red-800">Error</h3>
 						<p className="text-sm text-red-700 mt-1">{error}</p>
 					</div>
@@ -152,7 +212,7 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 				{/* Title */}
 				<div>
 					<label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-						Title
+						Title *
 					</label>
 					<input
 						type="text"
@@ -171,7 +231,7 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 						URL Slug
 					</label>
 					<div className="flex items-center space-x-2">
-						<span className="text-sm text-gray-500">
+						<span className="text-sm text-gray-500 whitespace-nowrap">
 							{process.env.NEXT_PUBLIC_FRONTEND_URL || 'https://your-blog.com'}/post/
 						</span>
 						<input
@@ -191,7 +251,7 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 				{/* Content */}
 				<div>
 					<label htmlFor="content" className="block text-sm font-medium text-gray-700 mb-2">
-						Content
+						Content *
 					</label>
 					<textarea
 						id="content"
@@ -282,7 +342,10 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 
 					<div className="flex items-center space-x-3">
 						{isDirty && (
-							<span className="text-xs text-amber-600">Unsaved changes</span>
+							<span className="text-xs text-amber-600 flex items-center">
+								<div className="w-2 h-2 bg-amber-500 rounded-full mr-2"></div>
+								Unsaved changes
+							</span>
 						)}
 
 						<button
@@ -294,12 +357,12 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 							{isLoading ? (
 								<>
 									<div className="animate-spin -ml-1 mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full inline-block"></div>
-									{existingPost ? 'Updating...' : 'Publishing...'}
+									{isEditMode ? 'Updating...' : 'Publishing...'}
 								</>
 							) : (
 								<>
 									<Eye className="w-4 h-4 mr-2 inline-block" />
-									{existingPost ? 'Update Post' : 'Publish Post'}
+									{isEditMode ? 'Update Post' : 'Publish Post'}
 								</>
 							)}
 						</button>
@@ -309,12 +372,15 @@ export default function PostEditor({ existingPost, onSave, onCancel }: PostEdito
 
 			{/* Tips */}
 			<div className="mt-8 bg-blue-50 rounded-lg p-4">
-				<h3 className="text-sm font-medium text-blue-900 mb-2">Writing Tips</h3>
+				<h3 className="text-sm font-medium text-blue-900 mb-2">
+					{isEditMode ? 'Editing Tips' : 'Writing Tips'}
+				</h3>
 				<ul className="text-sm text-blue-800 space-y-1">
 					<li>• Use descriptive titles to help readers find your content</li>
 					<li>• Break up long paragraphs for better readability</li>
 					<li>• You can use Markdown formatting in your content</li>
 					<li>• Save drafts frequently to avoid losing your work</li>
+					{isEditMode && <li>• Changes are automatically tracked - you can always revert if needed</li>}
 				</ul>
 			</div>
 		</div>

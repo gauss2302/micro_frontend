@@ -1,4 +1,4 @@
-// Fix 1: Update your API client (lib/api.ts)
+// lib/api.ts - Updated with authenticated post fetching
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
 
 export interface APIResponse<T = any> {
@@ -23,6 +23,7 @@ export interface User {
 	created_at: string
 	updated_at: string
 }
+
 export interface AuthTokens {
 	access_token: string
 	refresh_token: string
@@ -128,7 +129,7 @@ class APIClient {
 						if (refreshToken) {
 							this.refreshPromise = this.refreshToken(refreshToken)
 								.then((authResponse) => {
-									// Store new tokens
+									// Store new tokens and user data
 									this.storeTokens(authResponse.tokens)
 									this.storeUser(authResponse.user)
 									return authResponse
@@ -213,7 +214,9 @@ class APIClient {
 			throw new Error(response.data.error?.message || 'Failed to exchange auth code')
 		}
 
-		return response.data.data!
+		const authResponse = response.data.data!
+		console.log('Auth exchange successful, user:', authResponse.user.name)
+		return authResponse
 	}
 
 	async refreshToken(refreshToken: string): Promise<AuthResponse> {
@@ -231,7 +234,9 @@ class APIClient {
 			throw new Error(response.data.error?.message || 'Failed to refresh token')
 		}
 
-		return response.data.data!
+		const authResponse = response.data.data!
+		console.log('Token refresh successful, user:', authResponse.user.name)
+		return authResponse
 	}
 
 	async logout(): Promise<void> {
@@ -280,7 +285,9 @@ class APIClient {
 			throw new Error(response.data.error?.message || 'Failed to get user data')
 		}
 
-		return response.data.data!
+		const user = response.data.data!
+		console.log('Current user fetched:', user.name)
+		return user
 	}
 
 	async getUserProfile(userId: string): Promise<User> {
@@ -311,7 +318,7 @@ class APIClient {
 		return response.data.data!
 	}
 
-	// Get a specific post by ID
+	// Get a specific post by ID (authenticated - can access own drafts)
 	async getPost(postId: string): Promise<Post> {
 		const response: AxiosResponse<APIResponse<Post>> = await this.client.get(
 			`/api/v1/posts/${postId}`
@@ -324,7 +331,7 @@ class APIClient {
 		return response.data.data!
 	}
 
-	// Get a post by slug (public)
+	// Get a post by slug (public - only published posts)
 	async getPostBySlug(slug: string): Promise<Post> {
 		const response: AxiosResponse<APIResponse<Post>> = await this.client.get(
 			`/api/v1/public/posts/slug/${slug}`
@@ -332,6 +339,19 @@ class APIClient {
 
 		if (!response.data.success) {
 			throw new Error(response.data.error?.message || 'Failed to get post')
+		}
+
+		return response.data.data!
+	}
+
+	// Get a post by slug (authenticated - can access own drafts)
+	async getOwnPostBySlug(slug: string): Promise<Post> {
+		const response: AxiosResponse<APIResponse<Post>> = await this.client.get(
+			`/api/v1/posts/slug/${slug}`
+		)
+
+		if (!response.data.success) {
+			throw new Error(response.data.error?.message || 'Failed to get post for editing')
 		}
 
 		return response.data.data!
@@ -450,19 +470,31 @@ class APIClient {
 		if (typeof window !== 'undefined') {
 			localStorage.setItem('access_token', tokens.access_token)
 			localStorage.setItem('refresh_token', tokens.refresh_token)
+			console.log('Tokens stored successfully')
 		}
 	}
 
 	storeUser(user: User): void {
 		if (typeof window !== 'undefined') {
 			localStorage.setItem('user', JSON.stringify(user))
+			console.log('User data stored:', user.name)
 		}
 	}
 
 	getStoredUser(): User | null {
 		if (typeof window !== 'undefined') {
-			const userStr = localStorage.getItem('user')
-			return userStr ? JSON.parse(userStr) : null
+			try {
+				const userStr = localStorage.getItem('user')
+				if (userStr) {
+					const user = JSON.parse(userStr)
+					console.log('Retrieved stored user:', user.name)
+					return user
+				}
+			} catch (error) {
+				console.error('Failed to parse stored user data:', error)
+				// Clear corrupted user data
+				localStorage.removeItem('user')
+			}
 		}
 		return null
 	}
