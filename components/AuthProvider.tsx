@@ -2,23 +2,27 @@
 
 import React, { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import {useAuthStore} from "@/store/authStore";
+import { useAuthStore } from "@/store/authStore"
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const { checkAuth } = useAuthStore()
 	const [isHydrated, setIsHydrated] = useState(false)
+	const [authChecked, setAuthChecked] = useState(false)
 	const pathname = usePathname()
 
 	useEffect(() => {
+		// First, rehydrate the store
 		useAuthStore.persist.rehydrate()
 		setIsHydrated(true)
 	}, [])
 
 	useEffect(() => {
-		if (isHydrated) {
+		// Only check auth once after hydration and if not already checked
+		if (isHydrated && !authChecked) {
+			setAuthChecked(true)
 			checkAuth()
 		}
-	}, [checkAuth, isHydrated])
+	}, [checkAuth, isHydrated, authChecked])
 
 	if (!isHydrated) {
 		return (

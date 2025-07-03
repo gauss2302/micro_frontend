@@ -8,6 +8,7 @@ interface AuthState {
 	isAuthenticated: boolean
 	isLoading: boolean
 	error: string | null
+	isInitialized: boolean  // New flag to track initialization
 
 	// Actions
 	login: () => Promise<void>
@@ -27,6 +28,7 @@ export const useAuthStore = create<AuthState>()(
 			isAuthenticated: false,
 			isLoading: false,
 			error: null,
+			isInitialized: false,
 
 			// Actions
 			login: async () => {
@@ -58,7 +60,8 @@ export const useAuthStore = create<AuthState>()(
 						user: authResponse.user,
 						isAuthenticated: true,
 						isLoading: false,
-						error: null
+						error: null,
+						isInitialized: true
 					})
 				} catch (error) {
 					const errorMessage = error instanceof Error ? error.message : 'Authentication failed'
@@ -79,7 +82,8 @@ export const useAuthStore = create<AuthState>()(
 						user: null,
 						isAuthenticated: false,
 						isLoading: false,
-						error: null
+						error: null,
+						isInitialized: true
 					})
 				}
 			},
@@ -90,7 +94,7 @@ export const useAuthStore = create<AuthState>()(
 					: null
 
 				if (!refreshToken) {
-					set({ user: null, isAuthenticated: false })
+					set({ user: null, isAuthenticated: false, isInitialized: true })
 					return
 				}
 
@@ -105,7 +109,8 @@ export const useAuthStore = create<AuthState>()(
 					set({
 						user: authResponse.user,
 						isAuthenticated: true,
-						error: null
+						error: null,
+						isInitialized: true
 					})
 
 					console.log('Token refreshed successfully, user:', authResponse.user.name)
@@ -113,7 +118,7 @@ export const useAuthStore = create<AuthState>()(
 					console.warn('Token refresh failed:', error)
 
 					// Clear all auth data on refresh failure
-					set({ user: null, isAuthenticated: false })
+					set({ user: null, isAuthenticated: false, isInitialized: true })
 
 					// Clear stored tokens
 					if (typeof window !== 'undefined') {
@@ -125,8 +130,14 @@ export const useAuthStore = create<AuthState>()(
 			},
 
 			checkAuth: async () => {
-				// Don't check auth during hydration
+				// Don't check auth during hydration or if already initialized
 				if (typeof window === 'undefined') {
+					return
+				}
+
+				const { isInitialized } = get()
+				if (isInitialized) {
+					console.log('Auth already initialized, skipping check')
 					return
 				}
 
@@ -134,11 +145,11 @@ export const useAuthStore = create<AuthState>()(
 				const accessToken = localStorage.getItem('access_token')
 
 				if (!storedUser || !accessToken) {
-					set({ user: null, isAuthenticated: false })
+					set({ user: null, isAuthenticated: false, isInitialized: true })
 					return
 				}
 
-				// First set the stored user data immediately to avoid UI flash
+				// Set the stored user data immediately to avoid UI flash
 				set({
 					user: storedUser,
 					isAuthenticated: true,
@@ -158,11 +169,13 @@ export const useAuthStore = create<AuthState>()(
 							set({
 								user: currentUser,
 								isAuthenticated: true,
-								error: null
+								error: null,
+								isInitialized: true
 							})
 						} catch (userError) {
 							console.warn('Failed to fetch current user, using stored data:', userError)
 							// Keep using stored user data if fetching fresh data fails
+							set({ isInitialized: true })
 						}
 					} else {
 						// Token is invalid, try to refresh
@@ -175,7 +188,7 @@ export const useAuthStore = create<AuthState>()(
 						await get().refreshAuth()
 					} catch (refreshError) {
 						console.warn('Refresh auth failed:', refreshError)
-						set({ user: null, isAuthenticated: false })
+						set({ user: null, isAuthenticated: false, isInitialized: true })
 					}
 				}
 			},
@@ -195,6 +208,7 @@ export const useAuthStore = create<AuthState>()(
 			partialize: (state) => ({
 				user: state.user,
 				isAuthenticated: state.isAuthenticated,
+				// Don't persist isInitialized to ensure fresh check on app restart
 			}),
 			// Skip hydration on server side
 			skipHydration: true,
